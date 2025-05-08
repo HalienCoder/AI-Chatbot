@@ -1,29 +1,40 @@
-import os
-import streamlit as st
 from openai import OpenAI
+import streamlit as st
 
-# 1️⃣ Make sure your Streamlit secret is set as OPENAI_API_KEY (not OPENROUTER_API_KEY)
-client = OpenAI(
-    api_key=os.getenv("OPENAI_API_KEY"),
-    base_url="https://openrouter.ai/api/v1",
-)
-
+# — 1) Initialize Streamlit UI
 st.title("AI Chatbot")
-st.markdown("Developed by Nihal and Magin")
 
-if "history" not in st.session_state:
-    st.session_state.history = []
+# — 2) Initialize OpenAI client from Streamlit secrets
+client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
-user_input = st.text_input("You:", key="user_input")
-if user_input:
-    st.session_state.history.append({"role": "user", "content": user_input})
-    with st.spinner("Thinking..."):
-        response = client.chat.completions.create(
-            model="openai/gpt-3.5-turbo:free",           # ← Valid, free-tier chat model
-            messages=st.session_state.history
+# — 3) Persist chosen model in session_state
+if "openai_model" not in st.session_state:
+    st.session_state["openai_model"] = "gpt-3.5-turbo"
+
+# — 4) Initialize chat history
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+# — 5) Render past messages
+for msg in st.session_state.messages:
+    with st.chat_message(msg["role"]):
+        st.markdown(msg["content"])
+
+# — 6) Accept new user input
+if prompt := st.chat_input("Say something…"):
+    # 6a) Add user message to history & display
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    with st.chat_message("user"):
+        st.markdown(prompt)
+
+    # 6b) Call OpenAI with streaming
+    with st.chat_message("assistant"):
+        stream = client.chat.completions.create(
+            model=st.session_state["openai_model"],
+            messages=st.session_state.messages,
+            stream=True,
         )
-        reply = response.choices[0].message.content
-        st.session_state.history.append({"role": "assistant", "content": reply})
+        response = st.write_stream(stream)
 
-for msg in st.session_state.history:
-    st.markdown(f"**{msg['role'].capitalize()}**: {msg['content']}")
+    # 6c) Save assistant reply
+    st.session_state.messages.append({"role": "assistant", "content": response})
