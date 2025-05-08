@@ -1,40 +1,54 @@
-from openai import OpenAI
+import os
+import time
 import streamlit as st
+from openai import OpenAI, error  # error contains RateLimitError
 
-# — 1) Initialize Streamlit UI
+# Initialize client
+client = OpenAI(
+    api_key=st.secrets["OPENAI_API_KEY"],
+    base_url="https://openrouter.ai/api/v1",
+)
+
 st.title("AI Chatbot")
 
-# — 2) Initialize OpenAI client from Streamlit secrets
-client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
+# Initialize session state
+if "history" not in st.session_state:
+    st.session_state.history = []
 
-# — 3) Persist chosen model in session_state
-if "openai_model" not in st.session_state:
-    st.session_state["openai_model"] = "gpt-3.5-turbo"
+# Input box
+user_input = st.text_input("You:", key="user_input")
+if user_input:
+    st.session_state.history.append({"role": "user", "content": user_input})
+    st.session_state.user_input = ""  # clear input
 
-# — 4) Initialize chat history
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+    # Retry parameters
+    max_retries = 5
+    backoff_base = 1  # start with 1 second
 
-# — 5) Render past messages
-for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
+    with st.spinner("Thinking..."):
+        for attempt in range(1, max_retries + 1):
+            try:
+                # Streaming call
+                stream = client.chat.completions.create(
+                    model="openai/gpt-3.5-turbo:free",
+                    messages=st.session_state.history,
+                    stream=True,
+                )
+                # Collect the response token-by-token
+                full_reply = ""
+                for token in stream:
+                    delta = token.choices[0].delta.get("content", "")
+                    full_reply += delta
+                    st.write(delta, end="")  # typewriter effect
 
-# — 6) Accept new user input
-if prompt := st.chat_input("Say something…"):
-    # 6a) Add user message to history & display
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user"):
-        st.markdown(prompt)
+                # Save in history and break out
+                st.session_state.history.append({"role": "assistant", "content": full_reply})
+                break
 
-    # 6b) Call OpenAI with streaming
-    with st.chat_message("assistant"):
-        stream = client.chat.completions.create(
-            model=st.session_state["openai_model"],
-            messages=st.session_state.messages,
-            stream=True,
-        )
-        response = st.write_stream(stream)
-
-    # 6c) Save assistant reply
-    st.session_state.messages.append({"role": "assistant", "content": response})
+            except error.RateLimitError as e:
+                wait = backoff_base * (2 ** (attempt - 1))
+                st.warning(f"Rate limit hit. Retrying in {wait} s... (Attempt {attempt}/{max_retries})")
+                time.sleep(wait)
+        else:
+            # All retries failed
+            st.error("Sorry, we’re being rate-limited. Please try again later.")
