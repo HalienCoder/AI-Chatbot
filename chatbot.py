@@ -1,25 +1,30 @@
 import streamlit as st
-import openai
 import os
+from openai import OpenAI
 
-# Set your free OpenRouter API key here
-openai.api_key = os.getenv("API_OPENROUTER_KEY")
-openai.api_base = "https://openrouter.ai/api/v1"
+# Setup client with OpenRouter API base and key
+client = OpenAI(
+    api_key=os.getenv("OPENROUTER_API_KEY"),
+    base_url="https://openrouter.ai/api/v1",
+)
 
-st.title("💬 Free AI Chatbot")
-chat_history = st.session_state.get("history", [])
+st.title("AI Chatbot")
+st.markdown("Developed by Nihal and Magin")
+
+if "history" not in st.session_state:
+    st.session_state.history = []
 
 user_input = st.text_input("You:", key="user_input")
 if user_input:
-    chat_history.append({"role": "user", "content": user_input})
+    st.session_state.history.append({"role": "user", "content": user_input})
     with st.spinner("Thinking..."):
-        response = openai.ChatCompletion.create(
-            model="openchat/openchat-3.5-0106",  # free open model
-            messages=chat_history
+        response = client.chat.completions.create(
+            model="openchat/openchat-3.5-0106",
+            messages=st.session_state.history
         )
-    reply = response["choices"][0]["message"]["content"]
-    chat_history.append({"role": "assistant", "content": reply})
-    st.session_state["history"] = chat_history
+        reply = response.choices[0].message.content
+        st.session_state.history.append({"role": "assistant", "content": reply})
 
-for msg in chat_history:
+# Display chat
+for msg in st.session_state.history:
     st.markdown(f"**{msg['role'].capitalize()}**: {msg['content']}")
