@@ -8,8 +8,8 @@ client = OpenAI(
     base_url="https://openrouter.ai/api/v1",
 )
 
-st.title("💬 Free AI Chatbot")
-st.markdown("Powered by GPT-3.5 Turbo Free (via OpenRouter)")
+st.title("AI Chatbot")
+st.markdown("Developed by Nihal and Magin")
 
 if "history" not in st.session_state:
     st.session_state.history = []
